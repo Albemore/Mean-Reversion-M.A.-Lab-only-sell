@@ -1,0 +1,438 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © albertomanzanares
+
+//@version=5
+strategy ("Mean Reversion M.A. Lab only sell", overlay=true,format=format.price,default_qty_type=strategy.cash, default_qty_value=100, pyramiding=5 , precision=6, initial_capital= 10000)
+
+// ~~ ToolTips -----
+
+t1 ="It can be used on lower & higher timeframes, just increase the deviation % for higher timeframes. 0.25-0.50 is a suggestion for 15M "
+t2 ="Type of first moving average used in formula: (MA(n) + MA(n) + MA(n)) / 4 "
+t3 ="Type of second moving average used in formula: (MA(n) + MA(n)+ MA(n)) / 4 "
+t4 ="Type of third moving average used in formula: (MA(n) + MA(n)+ MA(n)) / 4 "
+t04="Type of 4 moving average used in formula: (MA(n) + MA(n)+ MA(n)) / 4 "
+t5 ="Source data used to calculate the customizable  moving average."
+t6 ="SUPERTREND =vwma100+vwma500+vwma1000 + vwap,     LAB = (MA(n) + MA(n) + MA(n)) / 3"
+t7 ="The buy operation will only occur when the ADX exceeds this value "
+t8 ="The buy operation will NOT occur if this value is exceeded "
+t9 ="Percentage of Stop Loss of this operation" 
+t10=""   
+
+
+//Imputs---------------
+
+
+combiMAOff    = input.bool(false, title= "customizable moving average Off",group="customizable moving average")
+
+maType1       = input.string("VWMA", title="Select 1 MA", options=["ALMA", "SMA", "EMA", "WMA", "RMA", "HMA", "VWMA", "VWAP", "SUPERTREND", "SUPERTREND1", "SUPERTREND2", "SUPERTREND EX", "LAB", "T3", "ZLSMA"  ], inline="MA", group="customizable moving average")
+length01      = input.int(1009, title="", minval=1, inline="MA", group="customizable moving average",tooltip=t2)
+src01         = input(hlcc4, title='Source' , inline="MA",  group="customizable moving average" ,tooltip=t5)
+
+maType2       = input.string("HMA", title="Select 2 MA", options=["ALMA","SMA", "EMA", "WMA", "RMA", "HMA", "VWMA", "VWAP", "SUPERTREND", "SUPERTREND1", "SUPERTREND2", "SUPERTREND EX", "LAB", "T3", "ZLSMA"  ], inline="MAa", group="customizable moving average")
+length02      = input.int(510, title="", minval=1, inline="MAa", group="customizable moving average",tooltip=t3)
+src02         = input(hlcc4, title='Source' , inline="MAa",  group="customizable moving average" ,tooltip=t5)
+
+maType3       = input.string("VWAP", title="Select 3 MA", options=["ALMA","SMA", "EMA", "WMA", "RMA", "HMA", "VWMA", "VWAP", "SUPERTREND", "SUPERTREND1", "SUPERTREND2", "SUPERTREND EX", "LAB" , "T3", "ZLSMA" ], inline="MAaa", group="customizable moving average")
+length03      = input.int(100, title="", minval=1, inline="MAaa", group="customizable moving average",tooltip=t4)
+src03         = input(hlcc4, title='Source', inline="MAaa",  group="customizable moving average" ,tooltip=t5)
+
+maType4       = input.string("LAB", title="Select 4 MA", options=["ALMA","SMA", "EMA", "WMA", "RMA", "HMA", "VWMA", "VWAP", "SUPERTREND", "SUPERTREND1", "SUPERTREND2", "SUPERTREND EX", "LAB", "T3", "ZLSMA"  ], inline="MAaaa", group="customizable moving average")
+length04      = input.int(100, title="", minval=1, inline="MAaaa", group="customizable moving average")
+src04         = input(hlcc4, title='Source', inline="MAaaa",  group="customizable moving average")
+
+mainLineSupportColor    = input.color(color.aqua, title="Uptrend", inline="MA1", group="customizable moving average" )
+mainLineResistanceColor = input.color(color.fuchsia, title="Downtrend", inline="MA1", group="customizable moving average")
+mainLinewidth           = input.int(4, title="Width", inline="MA1", group="customizable moving average")
+
+emaOff  = input.bool(false, title = "MA Off"   , inline="M0", group="M.A.")
+
+ma2Type = input.string("VWMA", title="Select Type MA", options=["ALMA","SMA", "EMA", "WMA", "RMA", "HMA", "VWMA", "VWAP", "SUPERTREND", "SUPERTREND1", "SUPERTREND2",  "SUPERTREND EX", "T3", "ZLSMA" ], inline="M1", group="M.A.")
+length2 = input.int(12, title="", minval=1, inline="M1", group="M.A.")
+src2    = input(high, title='Source', inline="M1", group="M.A.")
+
+ma3Type = input.string("HMA", title="Select Type MA", options=["ALMA","SMA", "EMA", "WMA", "RMA", "HMA", "VWMA", "VWAP", "SUPERTREND", "SUPERTREND1", "SUPERTREND2",  "SUPERTREND EX", "T3", "ZLSMA" ], inline="M01", group="M.A.")
+length3 = input.int(6, title="", minval=1, inline="M01", group="M.A.")
+src3    = input(open, title='Source', inline="M01", group="M.A.")
+
+emaLineSupportColor    = input.color(color.green, title = "Uptrend", inline="M5", group="M.A.")
+emaLineResistanceColor = input.color(color.red, title = "Downtrend", inline="M5", group="M.A.")
+emaLinewidth           = input.int(2, title= "Width", inline="M5", group="M.A.")
+
+
+emacross1  = input.string ("Customizable Moving Average", title="Select Type MA1 CROSS", options=["Customizable Moving Average", "M.A."], group="select moving average cross")
+emacross2  = input.string ("M.A.", title="Select Type MA2 CROSS", options=["Customizable Moving Average",  "M.A."], group="select moving average cross" )
+
+showdev    = input.bool(false, 'Show Deviation lines')
+showsig    = input(defval=false , title='Show signals buy sell based on Deviation ')
+showback   = input(defval=false, title='Show backgraund ')
+
+//Percent Deviation Amount-------
+
+percentDeviation  = input.float(0.3, step=0.01, title="Percentage Deviation Per Channel", group="Deviation of MA",tooltip=t1)/100
+src6              = input(high, title='Source', group="Deviation of MA")
+maType6           = input.string(title='Moving Average Type', defval='SUPERTREND1', options=['ALMA','SMA', 'EMA', 'WMA', 'RMA', 'TMA', 'VWMA', 'VWAP', 'HMA', 'SUPERTREND', 'SUPERTREND1', 'SUPERTREND2' , "SUPERTREND EX", "LAB", "T3", "ZLSMA"], group="Deviation of MA", tooltip=t6)
+length6           = input.int(10, 'Moving Average Length', minval=1 , group="Deviation of MA")
+
+devSupportColor    = input.color(color.rgb(0, 187, 212, 50), title="Deviation Above", inline="M2", group="Deviation")
+devResistanceColor = input.color(color.rgb(223, 64, 251, 50), title="Below", inline="M2", group="Deviation")
+devwidth            = input.int(1, title="Width", inline="M2", group="Deviation")
+
+Perc1 = input.float(0.4, title='lot 1 percentage', step=0.1, inline="M3", group="Percentage of lot")
+Perc2 = input.float(0.0, title='lot 2 percentage', step=0.1, inline="M3", group="Percentage of lot")
+Perc3 = input.float(0.0, title='lot 3 percentage', step=0.1, inline="M4", group="Percentage of lot")
+Perc4 = input.float(0.0, title='lot 4 percentage', step=0.1, inline="M4", group="Percentage of lot")
+//Perc5 = input.float(0.1, title='lot 5 percentage', step=0.1, inline="M5", group="Percentage of lot")
+//Perc6 = input.float(0.1, title='lot 6 percentage', step=0.1, inline="M5", group="Percentage of lot")
+
+StopLossPerc   = input.float(3, title="Stop Loss (%)", minval=0.00, step=0.01 , group="STOP LOSS",tooltip=t9 ) * 0.01
+longStopPrice  = strategy.position_avg_price * (1 + StopLossPerc)
+
+dev_emacross1  = input.float(0.3, step=0.01, title="Percentage Deviation of MA1 CROSS")/100
+dev_emacross2  = input.float(0.0, step=0.01, title="Percentage Deviation of MA2 CROSS")/100
+
+n_open         = input(0, title= "delay number of bars to open condition")
+n_close        = input(10, title= "delay number of bars to close condition")
+    
+showadx     = input.bool(false, 'active ADX filter', inline="M5", group="ADX filter")
+adx_value   = input.float(34,  title='ADX value filter', inline="M6", group="ADX filter" ,tooltip=t7)
+lenadx      = input(16,  inline="M7", group="ADX filter")
+
+show_andean    = input.bool(true, 'active Andean filter', inline="M5", group="Andean filter")
+length_andean  = input(60 ,  title='length andean')
+Val_bearish    = input(200, 'Value Bearish filter' ,tooltip=t8)
+sig_length     = 9
+
+
+//Moving Averages----------
+
+ma1 = switch maType1
+    "ALMA" => ta.alma(src01, length01, 0.7, 6)
+    "SMA"  => ta.sma(src01, length01)
+    "EMA"  => ta.ema(src01, length01)
+    "WMA"  => ta.wma(src01, length01)
+    "RMA"  => ta.rma(src01, length01)
+    "HMA"  => ta.hma(src01, length01)
+    "VWMA" => ta.vwma(src01,length01)
+    "VWAP" => ta.vwap(src01)
+    "SUPERTREND"  => (ta.vwma(src01,100) + ta.vwma(src01, 500) + ta.vwma(src01, 1000) + ta.vwap(src01) ) / 4
+    "SUPERTREND1" => (ta.vwma(src01,100) + ta.vwma(src01, 500) +  ta.vwap(src01) ) / 3
+    "SUPERTREND2" => (ta.vwma(src01,100) +  ta.vwap(src01) ) / 2
+    "SUPERTREND EX" => (ta.vwma(src01, 5) + ta.vwma(src01, 10) + ta.vwma(src01, 20) + ta.vwma(src01, 50) + ta.wma(src01, 5) + ta.wma(src01, 10) + ta.wma(src01, 20) + ta.wma(src01, 50)) / 8
+    "LAB"           => (ta.vwma ( src01,1009) + ta.hma(src01,501)+ ta.vwap(src01)) / 3
+    "T3"            => ta.ema(src01, length01) * (1+0.7) - ta.ema(ta.ema(src01, length01), length01) * 0.7
+    "ZLSMA"         => ta.linreg(src01,length01,0) + (ta.linreg(src01,length01,0) - ta.linreg(ta.linreg(src01,length01,0),length01,0))
+
+
+ma2 = switch maType2
+    "ALMA" => ta.alma(src02, length02, 0.7, 6)
+    "SMA"  => ta.sma(src02, length02)
+    "EMA"  => ta.ema(src02, length02)
+    "WMA"  => ta.wma(src02, length02)
+    "RMA"  => ta.rma(src02, length02)
+    "HMA"  => ta.hma(src02, length02)
+    "VWMA" => ta.vwma(src02,length02)
+    "VWAP" => ta.vwap(src02)
+    "SUPERTREND" => (ta.vwma(src02,100) + ta.vwma(src02, 500) + ta.vwma(src02, 1000) + ta.vwap(src02) ) / 4
+    "SUPERTREND1" => (ta.vwma(src02,100) + ta.vwma(src02, 500) +  ta.vwap(src02) ) / 3
+    "SUPERTREND2" => (ta.vwma(src02,100) +  ta.vwap(src02) ) / 2
+    "SUPERTREND EX" => (ta.vwma(src02, 5) + ta.vwma(src02, 10) + ta.vwma(src02, 20) + ta.vwma(src02, 50) + ta.wma(src02, 5) + ta.wma(src02, 10) + ta.wma(src02, 20) + ta.wma(src02, 50)) / 8
+    "LAB"        => (ta.vwma ( src02,1009) + ta.hma(src02,501)+ ta.vwap(src02)) / 3    
+    "T3"            => ta.ema(src02, length02) * (1+0.7) - ta.ema(ta.ema(src02, length02), length02) * 0.7
+    "ZLSMA"         => ta.linreg(src02,length02,0) + (ta.linreg(src02,length02,0) - ta.linreg(ta.linreg(src02,length02,0),length02,0))
+
+
+ma3 = switch maType3
+    "ALMA" => ta.alma(src03, length03, 0.7, 6)
+    "SMA"  => ta.sma(src03, length03)
+    "EMA"  => ta.ema(src03, length03)
+    "WMA"  => ta.wma(src03, length03)
+    "RMA"  => ta.rma(src03, length03)
+    "HMA"  => ta.hma(src03, length03)
+    "VWMA" => ta.vwma(src03,length03)
+    "VWAP" => ta.vwap(src03)
+    "SUPERTREND" => (ta.vwma(src03,100) + ta.vwma(src03, 500) + ta.vwma(src03, 1000) + ta.vwap(src03) ) / 4
+    "SUPERTREND1" => (ta.vwma(src03,100) + ta.vwma(src03, 500) +  ta.vwap(src03) ) / 3
+    "SUPERTREND2" => (ta.vwma(src03,100) +  ta.vwap(src03) ) / 2
+    "SUPERTREND EX" => (ta.vwma(src03, 5) + ta.vwma(src03, 10) + ta.vwma(src03, 20) + ta.vwma(src03, 50) + ta.wma(src03, 5) + ta.wma(src03, 10) + ta.wma(src03, 20) + ta.wma(src03, 50)) / 8
+    "LAB"        => (ta.vwma ( src03,1009) + ta.hma(src03,501)+ ta.vwap(src03)) / 3
+    "T3"            => ta.ema(src03, length03) * (1+0.7) - ta.ema(ta.ema(src03, length03), length03) * 0.7
+    "ZLSMA"         => ta.linreg(src03,length03,0) + (ta.linreg(src03,length03,0) - ta.linreg(ta.linreg(src03,length03,0),length03,0))
+
+
+ma4 = switch maType4
+    "ALMA" => ta.alma(src04, length04, 0.7, 6)
+    "SMA"  => ta.sma(src04, length04)
+    "EMA"  => ta.ema(src04, length04)
+    "WMA"  => ta.wma(src04, length04)
+    "RMA"  => ta.rma(src04, length04)
+    "HMA"  => ta.hma(src04, length04)
+    "VWMA" => ta.vwma(src04,length04)
+    "VWAP" => ta.vwap(src04)
+    "SUPERTREND" => (ta.vwma(src04,100) + ta.vwma(src04, 500) + ta.vwma(src04, 1000) + ta.vwap(src04) ) / 4
+    "SUPERTREND1" => (ta.vwma(src04,100) + ta.vwma(src04, 500) +  ta.vwap(src04) ) / 3
+    "SUPERTREND2" => (ta.vwma(src04,100) +  ta.vwap(src04) ) / 2
+    "SUPERTREND EX" => (ta.vwma(src04, 5) + ta.vwma(src04, 10) + ta.vwma(src04, 20) + ta.vwma(src04, 50) + ta.wma(src04, 5) + ta.wma(src04, 10) + ta.wma(src04, 20) + ta.wma(src04, 50)) / 8
+    "LAB"        => (ta.vwma ( src04,1009) + ta.hma(src04,501)+ ta.vwap(src04)) / 3
+    "T3"            => ta.ema(src04, length04) * (1+0.7) - ta.ema(ta.ema(src04, length04), length04) * 0.7
+    "ZLSMA"         => ta.linreg(src04,length04,0) + (ta.linreg(src04,length04,0) - ta.linreg(ta.linreg(src04,length04,0),length04,0))
+
+
+combiMA1 = (ma1 + ma2 + ma3 +ma4 ) / 4
+
+
+ma5 = switch ma2Type
+    "ALMA" => ta.alma(src2, length2, 0.7, 6)
+    "SMA"  => ta.sma(src2, length2)
+    "EMA"  => ta.ema(src2, length2)
+    "WMA"  => ta.wma(src2, length2)
+    "RMA"  => ta.rma(src2, length2)
+    "HMA"  => ta.hma(src2, length2)
+    "VWMA" => ta.vwma(src2,length2)
+    "VWAP" => ta.vwap(src2)
+    "SUPERTREND" => (ta.vwma(src2,100) + ta.vwma(src2, 500) + ta.vwma(src2, 1000) + ta.vwap(src2) ) / 4
+    "SUPERTREND1" => (ta.vwma(src2,100) + ta.vwma(src2, 500) +  ta.vwap(src2) ) / 3
+    "SUPERTREND2" => (ta.vwma(src2,100) +  ta.vwap(src2) ) / 2
+    "SUPERTREND EX" => (ta.vwma(src2, 5) + ta.vwma(src2, 10) + ta.vwma(src2, 20) + ta.vwma(src2, 50) + ta.wma(src2, 5) + ta.wma(src2, 10) + ta.wma(src2, 20) + ta.wma(src2, 50)) / 8
+    "T3"            => ta.ema(src2, length2) * (1+0.7) - ta.ema(ta.ema(src2, length2), length2) * 0.7
+    "ZLSMA"         => ta.linreg(src2,length2,0) + (ta.linreg(src2,length2,0) - ta.linreg(ta.linreg(src2,length2,0),length2,0))
+
+
+ma05 = switch ma3Type
+    "ALMA" => ta.alma(src3, length3, 0.7, 6)
+    "SMA"  => ta.sma(src3, length3)
+    "EMA"  => ta.ema(src3, length3)
+    "WMA"  => ta.wma(src3, length3)
+    "RMA"  => ta.rma(src3, length3)
+    "HMA"  => ta.hma(src3, length3)
+    "VWMA" => ta.vwma(src3,length3)
+    "VWAP" => ta.vwap(src3)
+    "SUPERTREND" => (ta.vwma(src3,100) + ta.vwma(src3, 500) + ta.vwma(src3, 1000) + ta.vwap(src3) ) / 4
+    "SUPERTREND1" => (ta.vwma(src3,100) + ta.vwma(src3, 500) +  ta.vwap(src3) ) / 3
+    "SUPERTREND2" => (ta.vwma(src3,100) +  ta.vwap(src3) ) / 2
+    "SUPERTREND EX" => (ta.vwma(src3, 5) + ta.vwma(src3, 10) + ta.vwma(src3, 20) + ta.vwma(src3, 50) + ta.wma(src3, 5) + ta.wma(src3, 10) + ta.wma(src3, 20) + ta.wma(src3, 50)) / 8
+    "T3"            => ta.ema(src3, length3) * (1+0.7) - ta.ema(ta.ema(src3, length3), length3) * 0.7
+    "ZLSMA"         => ta.linreg(src3,length3,0) + (ta.linreg(src3,length3,0) - ta.linreg(ta.linreg(src3,length3,0),length3,0))
+
+
+ma6 = switch maType6
+    "ALMA" => ta.alma(src6, length6, 0.7, 6)
+    "SMA"  => ta.sma(src6, length6)
+    "EMA"  => ta.ema(src6, length6)
+    "WMA"  => ta.wma(src6, length6)
+    "RMA"  => ta.rma(src6, length6)
+    "TMA"  => ta.sma(ta.sma(src6, math.ceil(length6 / 2)), math.floor(length6 / 2) + 1)
+    "VWMA" => ta.vwma(src6,length6)
+    "VWAP" => ta.vwap(src6)
+    "HMA"  => ta.hma(src6, length6)
+    "SUPERTREND" => (ta.vwma(src6,100) + ta.vwma(src6, 500) + ta.vwma(src6, 1000) + ta.vwap(src6) ) / 4
+    "SUPERTREND1" => (ta.vwma(src6,100) + ta.vwma(src6, 500) +  ta.vwap(src6) ) / 3
+    "SUPERTREND2" => (ta.vwma(src6,100) +  ta.vwap(src6) ) / 2
+    "SUPERTREND EX" => (ta.vwma(src6, 5) + ta.vwma(src6, 10) + ta.vwma(src6, 20) + ta.vwma(src6, 50) + ta.wma(src6, 5) + ta.wma(src6, 10) + ta.wma(src6, 20) + ta.wma(src6, 50)) / 8
+    "LAB"  => combiMA1
+    "T3"            => ta.ema(src6, length6) * (1+0.7) - ta.ema(ta.ema(src6, length6), length6) * 0.7
+    "ZLSMA"         => ta.linreg(src6,length6,0) + (ta.linreg(src6,length6,0) - ta.linreg(ta.linreg(src6,length6,0),length6,0))
+
+
+//Combined Moving Average Logic------- 
+
+
+combiMA = ma6
+
+showdev_display    = showdev == true ? display.all : display.none
+
+a_macross1 = switch emacross1
+    "Customizable Moving Average"    => combiMA1
+    "M.A."                           => (ma5 +ma05)/2
+    
+a_macross2 = switch emacross2
+    "Customizable Moving Average"    => combiMA1
+    "M.A."                           => (ma5 +ma05)/2
+    
+macross1= a_macross1 * (1 + dev_emacross1)
+macross2= a_macross2 * (1 + dev_emacross2)
+
+//Percentage Deviation Calculations--------
+
+combiMA1Up = combiMA * (1 + percentDeviation)
+combiMA2Up = combiMA * (1 + (percentDeviation*2))
+combiMA3Up = combiMA * (1 + (percentDeviation*3))
+combiMA4Up = combiMA * (1 + (percentDeviation*4))
+combiMA5Up = combiMA * (1 + (percentDeviation*5))
+combiMA6Up = combiMA * (1 + (percentDeviation*6))
+combiMA7Up = combiMA * (1 + (percentDeviation*7))
+combiMA8Up = combiMA * (1 + (percentDeviation*8))
+combiMA9Up = combiMA * (1 + (percentDeviation*9))
+combiMA10Up = combiMA * (1 + (percentDeviation*10))
+
+combiMA1Down = combiMA * (1 - percentDeviation)
+combiMA2Down = combiMA * (1 - (percentDeviation*2))
+combiMA3Down = combiMA * (1 - (percentDeviation*3))
+combiMA4Down = combiMA * (1 - (percentDeviation*4))
+combiMA5Down = combiMA * (1 - (percentDeviation*5))
+combiMA6Down = combiMA * (1 - (percentDeviation*6))
+combiMA7Down = combiMA * (1 - (percentDeviation*7))
+combiMA8Down = combiMA * (1 - (percentDeviation*8))
+combiMA9Down = combiMA * (1 - (percentDeviation*9))
+combiMA10Down = combiMA * (1 - (percentDeviation*10))
+
+// Plot Lines-----------
+
+// (Plot stop loss values for confirmation)
+plot(strategy.position_size < 0 ? longStopPrice : na, color=color.rgb(255, 0, 0), style=plot.style_cross, linewidth=2, title="Long Stop Loss")
+         
+plot(combiMAOff ? na : macross1, color=close > macross1 ? mainLineSupportColor : mainLineResistanceColor, linewidth=mainLinewidth, title="moving average")
+bgcolor(showback == false ? na : macross1>low ? color.new(color.red,80) : color.new(#4caf4f, 80))
+
+plot(emaOff ? na : macross2, color=open > macross2 ?  emaLineSupportColor : emaLineResistanceColor, linewidth=emaLinewidth, title="MA Line")
+bgcolor(showback == false ? na : macross2>high ? color.new(color.red,90) : color.new(color.green, 90))
+
+//plot(combiMA1Up, title="Up 1 Deviation", color=close > combiMA1Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA2Up, title="Up 2 Deviation", color=close > combiMA2Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA3Up, title="Up 3 Deviation", color=close > combiMA3Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA4Up, title="Up 4 Deviation", color=close > combiMA4Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA5Up, title="Up 5 Deviation", color=close > combiMA5Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA6Up, title="Up 6 Deviation", color=close > combiMA6Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA7Up, title="Up 7 Deviation", color=close > combiMA7Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA8Up, title="Up 8 Deviation", color=close > combiMA8Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA9Up, title="Up 9 Deviation", color=close > combiMA9Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA10Up, title="Up 10 Deviation", color=close > combiMA10Up ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+
+//plot(combiMA1Down, title="Down 1 Deviation", color=close > combiMA1Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA2Down, title="Down 2 Deviation", color=close > combiMA2Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA3Down, title="Down 3 Deviation", color=close > combiMA3Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA4Down, title="Down 4 Deviation", color=close > combiMA4Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA5Down, title="Down 5 Deviation", color=close > combiMA5Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA6Down, title="Down 6 Deviation", color=close > combiMA6Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA7Down, title="Down 7 Deviation", color=close > combiMA7Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA8Down, title="Down 8 Deviation", color=close > combiMA8Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA9Down, title="Down 9 Deviation", color=close > combiMA9Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+plot(combiMA10Down, title="Down 10 Deviation", color=close > combiMA10Down ? devSupportColor : devResistanceColor, linewidth=devwidth , display = showdev_display)
+
+
+//Signals buy bear--------
+
+bull00 = (low < (combiMA * (1 - (percentDeviation*2))) )
+bear00 = (high > (combiMA * (1 + (percentDeviation*2))) )
+
+bull0 = (low < (combiMA * (1 - (percentDeviation*4)))  )
+bear0 = (high > (combiMA * (1 + (percentDeviation*4)))  )
+
+bull = (low < (combiMA * (1 - (percentDeviation*6))) )
+bear = (high > (combiMA * (1 + (percentDeviation*6)))  )
+
+bull1 = (low < (combiMA * (1 - (percentDeviation*8))) )
+bear1 = (high > (combiMA * (1 + (percentDeviation*8))) )
+
+bull2 = (low < (combiMA * (1 - (percentDeviation*10))) )
+bear2 = (high > (combiMA * (1 + (percentDeviation*10))) )
+
+bull3 = (low < (combiMA * (1 - (percentDeviation*14))) )
+bear3 = (high > (combiMA * (1 + (percentDeviation*14))) )
+
+//plotshape(bull00 and showsig, title="Buy dev 2", style=shape.triangleup, location=location.belowbar, color=color.rgb(161, 226, 131), size=size.tiny)
+//plotshape(bear00 and showsig, title="Sell dev 2", style=shape.triangledown, location=location.abovebar, color=color.rgb(209, 120, 52), size=size.tiny)
+
+plotshape(bull0 and showsig, title="Buy dev 4", style=shape.triangleup, location=location.belowbar, color=color.rgb(161, 226, 131), size=size.small)
+plotshape(bear0 and showsig, title="Sell dev 4", style=shape.triangledown, location=location.abovebar, color=color.rgb(209, 120, 52), size=size.small)
+
+plotshape(bull and showsig, title="Buy dev 6", style=shape.circle, location=location.belowbar, color=color.rgb(161, 226, 131), size=size.tiny)
+plotshape(bear and showsig, title="Sell dev 6", style=shape.circle, location=location.abovebar, color=color.rgb(209, 120, 52), size=size.tiny)
+
+plotshape(bull1 and showsig, title="Buy dev 8", style=shape.circle, location=location.belowbar, color=color.green, size=size.small)
+plotshape(bear1 and showsig, title="Sell dev 8", style=shape.circle, location=location.abovebar, color=color.red, size=size.small)
+
+plotshape(bull2 and showsig, title="Buy dev 10", style=shape.circle, location=location.belowbar, color=color.rgb(0, 255, 8), size=size.normal)
+plotshape(bear2 and showsig, title="Sell dev 10", style=shape.circle, location=location.abovebar, color=color.rgb(255, 0, 0), size=size.normal)
+
+plotshape(bull3 and showsig, title="Buy dev 14", style=shape.circle, location=location.belowbar, color=color.rgb(255, 255, 255), size=size.large)
+plotshape(bear3 and showsig, title="Sell dev 14", style=shape.circle, location=location.abovebar, color=color.rgb(255, 255, 255), size=size.large)
+
+
+//ADX filter-------------------
+
+TrueRange = math.max(math.max(high - low, math.abs(high - nz(close[1]))), math.abs(low - nz(close[1])))
+DirectionalMovementPlus = high - nz(high[1]) > nz(low[1]) - low ? math.max(high - nz(high[1]), 0) : 0
+DirectionalMovementMinus = nz(low[1]) - low > high - nz(high[1]) ? math.max(nz(low[1]) - low, 0) : 0
+
+SmoothedTrueRange = 0.0
+SmoothedTrueRange := nz(SmoothedTrueRange[1]) - nz(SmoothedTrueRange[1]) / lenadx + TrueRange
+
+SmoothedDirectionalMovementPlus = 0.0
+SmoothedDirectionalMovementPlus := nz(SmoothedDirectionalMovementPlus[1]) - nz(SmoothedDirectionalMovementPlus[1]) / lenadx + DirectionalMovementPlus
+
+SmoothedDirectionalMovementMinus = 0.0
+SmoothedDirectionalMovementMinus := nz(SmoothedDirectionalMovementMinus[1]) - nz(SmoothedDirectionalMovementMinus[1]) / lenadx + DirectionalMovementMinus
+
+DIPlus = SmoothedDirectionalMovementPlus / SmoothedTrueRange * 100
+DIMinus = SmoothedDirectionalMovementMinus / SmoothedTrueRange * 100
+DX = math.abs(DIPlus - DIMinus) / (DIPlus + DIMinus) * 100
+ADX = ta.sma(DX, lenadx)
+
+// Andean Filter--------------
+
+var alpha = 2/(length_andean +1)
+
+var up1 = 0.,var up2 = 0.
+var dn1 = 0.,var dn2 = 0.
+
+C = close
+O = open
+
+up1 := nz(math.max(C, O, up1[1] - (up1[1] - C) * alpha), C)
+up2 := nz(math.max(C * C, O * O, up2[1] - (up2[1] - C * C) * alpha), C * C)
+
+dn1 := nz(math.min(C, O, dn1[1] + (C - dn1[1]) * alpha), C)
+dn2 := nz(math.min(C * C, O * O, dn2[1] + (C * C - dn2[1]) * alpha), C * C)
+
+//Components
+bull_andean = math.sqrt(dn2 - dn1 * dn1)
+bear_andean = math.sqrt(up2 - up1 * up1)
+
+signal = ta.ema(math.max(bull_andean, bear_andean), sig_length)
+
+
+
+// Crossover conditions-----------
+
+showadx_display   = showadx == true ?   (ADX > adx_value) : ta.crossunder(macross2, combiMA4Up)
+show_andean_display = show_andean == true ? (bear_andean < 300) : ta.crossunder(macross2, combiMA4Up)
+
+
+cierreP00 = bear00
+cierreP0 = bear0 
+cierreP1 = bear
+cierreP2 = bear1
+cierreP3 = bear2
+
+//longCondition = ta.crossover(macross1, macross2) and showadx_display and show_andean_display and close < macross1
+//shortCondition = ta.crossunder(macross1, macross2) //or ta.crossunder(close , longStopPrice)
+//shortCondition = ta.crossunder(macross1, macross2) or  ta.crossunder(high, combiMA1)
+//openCondition =  ta.crossunder(high, combiMA4Up) and showadx_display and show_andean_display
+openCondition =  ta.crossunder(macross2, combiMA4Up) and showadx_display and show_andean_display
+closeCondition =  ta.crossunder(close, macross1) 
+
+
+
+// trade conditions----------
+
+if (openCondition)[n_open]
+    strategy.entry("short1", strategy.short, qty=Perc1)
+    //strategy.entry("long2", strategy.long, qty=Perc2)
+    //strategy.entry("long3", strategy.long, qty=Perc3)
+    //strategy.entry("long4", strategy.long, qty=Perc4)
+
+//if (cierreP00)
+    //strategy.close( "long1")
+
+//if (cierreP0)
+    //strategy.close( "long2")
+
+//if (cierreP1)
+    //strategy.close( "long3")
+
+//if (cierreP2)
+    //strategy.close( "long4")
+
+
+if (closeCondition)[n_close] or ta.crossover(close , longStopPrice)
+    strategy.close_all()
